@@ -1,0 +1,187 @@
+---
+title: "Kmeans1"
+output: html_document
+date: "2022-11-20"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+#  Define summarize_numeric
+summarize_numeric = function(dataset) {
+  
+  dataset = select_if(dataset, is.numeric)
+  summary.table = data.frame(Attribute = names(dataset))
+  
+  summary.table = summary.table %>% 
+    mutate('Missing Values' = apply(dataset, 2, function (x) sum(is.na(x))),
+           'Unique Values' = apply(dataset, 2, function (x) length(unique(x))),
+           'Mean' = colMeans(dataset, na.rm = TRUE),
+           'Min' = apply(dataset, 2, function (x) min(x, na.rm = TRUE)),
+           'Max' = apply(dataset, 2, function (x) max(x, na.rm = TRUE)),
+           'SD' = apply(dataset, 2, function (x) sd(x, na.rm = TRUE))
+    )
+  summary.table
+}
+
+#  Define summarize_character function 
+summarize_character = function(dataset) {
+  
+  dataset = select_if(dataset, is.character)
+  summary.table = data.frame(Attribute = names(dataset))
+  
+  summary.table = summary.table %>% 
+    mutate('Missing Values' = apply(dataset, 2, function (x) sum(is.na(x))),
+           'Unique Values' = apply(dataset, 2, function (x) length(unique(x))),
+    )
+  summary.table
+  
+}
+
+#  Define summarize_factor function
+summarize_factor = function(dataset) {
+  
+  dataset = select_if(dataset, is.factor)
+  summary.table = data.frame(Attribute = names(dataset))
+  
+  summary.table = summary.table %>% 
+    mutate('Missing Values' = apply(dataset, 2, function (x) sum(is.na(x))),
+           'Unique Values' = apply(dataset, 2, function (x) length(unique(x))),
+           'Mode' = apply(dataset, 2, function (x) mode(x)),
+    )
+  summary.table
+}
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r}
+library(tidyverse)
+airbnb <- read.csv("C:/Users/Goureesh/Desktop/Data Mining/Final Project/airbnb_selected.csv")
+summarize_numeric(airbnb)
+summarize_character(airbnb)
+
+#  Convert numeric attributes to factors
+#airbnb$host_id = as.factor(airbnb$host_id)
+airbnb$calculated_host_listings_count = as.factor(airbnb$calculated_host_listings_count)
+
+#  Convert character attributes to factors
+#airbnb$name = as_factor(airbnb$name)
+airbnb$neighbourhood_group = as_factor(airbnb$neighbourhood_group)
+airbnb$neighbourhood = as_factor(airbnb$neighbourhood)
+airbnb$room_type = as_factor(airbnb$room_type)
+summarize_factor(airbnb)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r}
+absc = scale(airbnb %>% select_if(is.numeric))
+#summary(absc)
+absc = subset(absc,select = -c(latitude,longitude))
+summary(absc)
+```
+
+```{r}
+totwss = tibble(num_clusters = 1:10, tot_withinss = 0)
+for (i in 1:10) {
+  km = kmeans(absc, i, nstart=10)
+  totwss$tot_withinss[i] = km$tot.withinss
+}
+ggplot(totwss, aes(x = num_clusters, y=tot_withinss)) + geom_line() + geom_point()
+```
+
+```{r}
+Mode <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+```
+
+
+```{r}
+km = kmeans(absc, 6, nstart=10)
+#km$cluster
+#absc
+airbnb = airbnb %>% mutate(Cluster = as_factor(km$cluster))
+
+airbnb %>% group_by(Cluster) %>% summarize(Size = n(),  rpm = Mode(reviews_per_month),
+                                              rp = mean(review_performance),
+                                              mn = Mode(minimum_nights),
+                                              av = Mode(availability_365),
+                                              PR = mean(price),
+                                              rt = Mode(room_type),
+                                              ng = Mode(neighbourhood_group)
+                                              # hty = Mode(home_type),
+                                              # pty = Mode(private_type),
+                                              # sty = Mode(share_type),
+                                              # brk = Mode(neigh_brk),
+                                              #  qun = Mode(neigh_qun),
+                                              #  brx = Mode(neigh_brx),
+                                              #  stt = Mode(neigh_stt),
+                                              #  man = Mode(neigh_man)
+)
+#airbnb
+```
+#
+#  Create binary "dummy" variables for type
+#
+```{r}
+
+airbnb = airbnb %>% mutate(home_type = if_else(room_type == "Entire home/apt", 1, 0))
+airbnb = airbnb %>% mutate(private_type = if_else(room_type == "Private room", 1, 0))
+airbnb = airbnb %>% mutate(share_type = if_else(room_type == "Shared room", 1, 0))
+airbnb = airbnb %>% mutate(neigh_brk = if_else(neighbourhood_group == "Brooklyn", 1, 0))
+airbnb = airbnb %>% mutate(neigh_qun = if_else(neighbourhood_group == "Queens", 1, 0))
+airbnb = airbnb %>% mutate(neigh_brx = if_else(neighbourhood_group == "Bronx", 1, 0))
+airbnb = airbnb %>% mutate(neigh_stt = if_else(neighbourhood_group == "Staten Island", 1, 0))
+airbnb = airbnb %>% mutate(neigh_man = if_else(neighbourhood_group == "Manhattan", 1, 0))
+summarize_numeric(airbnb)
+```
+
+```{r}
+g1 = ggplot(airbnb) + geom_boxplot(aes(x= Cluster, y=`reviews_per_month`)) 
+g2 = ggplot(airbnb) + geom_boxplot(aes(x= Cluster, y=`review_performance`)) 
+g3 = ggplot(airbnb) + geom_boxplot(aes(x= Cluster, y=`minimum_nights`)) 
+g4 = ggplot(airbnb) + geom_boxplot(aes(x= Cluster, y=`availability_365`)) 
+g5 = ggplot(airbnb) + geom_boxplot(aes(x= Cluster, y=`price`)) 
+# g6 = ggplot(airbnb) + geom_boxplot(aes(x= Cluster, y=`home_type`)) 
+# g7 = ggplot(airbnb) + geom_boxplot(aes(x= Cluster, y=`private_type`)) 
+# g8 = ggplot(airbnb) + geom_boxplot(aes(x= Cluster, y=`share_type`)) 
+# g9 = ggplot(airbnb) + geom_boxplot(aes(x= Cluster, y=`neigh_brk`)) 
+
+
+
+library(gridExtra)
+grid.arrange( g3, g5, nrow=1)
+#grid.arrange(g1, g2, g3, nrow=2)
+```
+
+```{r}
+#install.packages("clustertend")
+library(clustertend)
+#airbnb = subset(airbnb,select =-c(cluster))
+#,cluster,home_type,share_type,private_type,neigh_brk,neigh_brx,neigh_stt,neigh_man,neigh_qun))
+
+hopkins(scale(airbnb %>% select_if(is.numeric)), 10)
+#airbnb
+```
+
+```{r}
+ggplot(airbnb) + geom_bar(aes(x= Cluster, fill=`room_type`))
+
+```
+
+```{r}
+ggplot(airbnb) + geom_bar(aes(x= Cluster, fill=neighbourhood_group))
+```
